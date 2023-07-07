@@ -4,6 +4,7 @@ const app = express();
 const jwt = require("jsonwebtoken");
 require("dotenv").config();
 const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
+const stripe = require("stripe")(process.env.PAYMENT_METHOD_SECRET);
 const port = process.env.PORT || 5000;
 
 const corsConfig = {
@@ -56,6 +57,7 @@ async function run() {
     const userCollection = client.db("moviesDB").collection("users");
     const favoriteCollection = client.db("moviesDB").collection("favorite");
     const saveCollection = client.db("moviesDB").collection("save");
+    const paymentCollection = client.db("moviesDB").collection("payment");
     const subscriptionCollection = client
       .db("moviesDB")
       .collection("subscriptions");
@@ -173,7 +175,22 @@ async function run() {
       res.send(result);
     });
 
+    // set subscription status
+    app.patch("/subscriptionStatus/:email", async (req, res) => {
+      const email = req.params.email;
+      const query = { email: email };
+      const updateDoc = {
+        $set: {
+          subscriptionStatus: "paid",
+          subscriptionDate: new Date(),
+        },
+      };
+      const result = await userCollection.updateOne(query, updateDoc);
+      res.send(result);
+    });
+
     // Movie add delete related APIS
+
     // favorite movies
     app.post("/favorite", async (req, res) => {
       const favoriteMovie = req.body;
@@ -239,6 +256,53 @@ async function run() {
       const id = req.params.id;
       const query = { _id: new ObjectId(id) };
       const result = await subscriptionCollection.findOne(query);
+      res.send(result);
+    });
+
+    // PAYMENT RELATED APIS
+    // payment intant
+    app.post("/create-payment-intent", async (req, res) => {
+      const { price } = req.body;
+      const amount = parseInt(price * 100);
+
+      const paymentIntent = await stripe.paymentIntents.create({
+        amount: amount,
+        currency: "usd",
+        payment_method_types: ["card"],
+      });
+
+      res.send({
+        clientSecret: paymentIntent.client_secret,
+      });
+    });
+
+    // post payment collection
+    app.post("/payment", verifyJWT, async (req, res) => {
+      const payment = req.body;
+      payment.date = new Date();
+      const result = await paymentCollection.insertOne(payment);
+      res.send(result);
+    });
+
+    // get all payment
+    app.get("/allpayment", verifyJWT, async (req, res) => {
+      const { date } = req.body;
+      const result = await paymentCollection
+        .find()
+        .sort({ date: -1 })
+        .toArray();
+      res.send(result);
+    });
+
+    // get user spesic payment
+    app.get("/payment", verifyJWT, async (req, res) => {
+      const { date } = req.body;
+      const email = req.query.email;
+      const filter = { email: email };
+      const result = await paymentCollection
+        .find(filter)
+        .sort({ date: -1 })
+        .toArray();
       res.send(result);
     });
 
