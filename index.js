@@ -294,7 +294,7 @@ async function run() {
       res.send(result);
     });
 
-    // get user spesic payment
+    // get user specific payment
     app.get("/payment", verifyJWT, async (req, res) => {
       const { date } = req.body;
       const email = req.query.email;
